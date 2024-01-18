@@ -2,33 +2,6 @@ gf_log = [0, 0, 1, 25, 2, 50, 26, 198, 3, 223, 51, 238, 27, 104, 199, 75, 4, 100
 gf_exp = [1, 2, 4, 8, 16, 32, 64, 128, 29, 58, 116, 232, 205, 135, 19, 38, 76, 152, 45, 90, 180, 117, 234, 201, 143, 3, 6, 12, 24, 48, 96, 192, 157, 39, 78, 156, 37, 74, 148, 53, 106, 212, 181, 119, 238, 193, 159, 35, 70, 140, 5, 10, 20, 40, 80, 160, 93, 186, 105, 210, 185, 111, 222, 161, 95, 190, 97, 194, 153, 47, 94, 188, 101, 202, 137, 15, 30, 60, 120, 240, 253, 231, 211, 187, 107, 214, 177, 127, 254, 225, 223, 163, 91, 182, 113, 226, 217, 175, 67, 134, 17, 34, 68, 136, 13, 26, 52, 104, 208, 189, 103, 206, 129, 31, 62, 124, 248, 237, 199, 147, 59, 118, 236, 197, 151, 51, 102, 204, 133, 23, 46, 92, 184, 109, 218, 169, 79, 158, 33, 66, 132, 21, 42, 84, 168, 77, 154, 41, 82, 164, 85, 170, 73, 146, 57, 114, 228, 213, 183, 115, 230, 209, 191, 99, 198, 145, 63, 126, 252, 229, 215, 179, 123, 246, 241, 255, 227, 219, 171, 75, 150, 49, 98, 196, 149, 55, 110, 220, 165, 87, 174, 65, 130, 25, 50, 100, 200, 141, 7, 14, 28, 56, 112, 224, 221, 167, 83, 166, 81, 162, 89, 178, 121, 242, 249, 239, 195, 155, 43, 86, 172, 69, 138, 9, 18, 36, 72, 144, 61, 122, 244, 245, 247, 243, 251, 235, 203, 139, 11, 22, 44, 88, 176, 125, 250, 233, 207, 131, 27, 54, 108, 216, 173, 71, 142, 1, 2, 4, 8, 16, 32, 64, 128, 29, 58, 116, 232, 205, 135, 19, 38, 76, 152, 45, 90, 180, 117, 234, 201, 143, 3, 6, 12, 24, 48, 96, 192, 157, 39, 78, 156, 37, 74, 148, 53, 106, 212, 181, 119, 238, 193, 159, 35, 70, 140, 5, 10, 20, 40, 80, 160, 93, 186, 105, 210, 185, 111, 222, 161, 95, 190, 97, 194, 153, 47, 94, 188, 101, 202, 137, 15, 30, 60, 120, 240, 253, 231, 211, 187, 107, 214, 177, 127, 254, 225, 223, 163, 91, 182, 113, 226, 217, 175, 67, 134, 17, 34, 68, 136, 13, 26, 52, 104, 208, 189, 103, 206, 129, 31, 62, 124, 248, 237, 199, 147, 59, 118, 236, 197, 151, 51, 102, 204, 133, 23, 46, 92, 184, 109, 218, 169, 79, 158, 33, 66, 132, 21, 42, 84, 168, 77, 154, 41, 82, 164, 85, 170, 73, 146, 57, 114, 228, 213, 183, 115, 230, 209, 191, 99, 198, 145, 63, 126, 252, 229, 215, 179, 123, 246, 241, 255, 227, 219, 171, 75, 150, 49, 98, 196, 149, 55, 110, 220, 165, 87, 174, 65, 130, 25, 50, 100, 200, 141, 7, 14, 28, 56, 112, 224, 221, 167, 83, 166, 81, 162, 89, 178, 121, 242, 249, 239, 195, 155, 43, 86, 172, 69, 138, 9, 18, 36, 72, 144, 61, 122, 244, 245, 247, 243, 251, 235, 203, 139, 11, 22, 44, 88, 176, 125, 250, 233, 207, 131, 27, 54, 108, 216, 173, 71, 142, 1, 2]
 
 
-def gf_poly_div(dividend, divisor):
-    '''Fast polynomial division by using Extended Synthetic Division and optimized for GF(2^p) computations
-    (doesn't work with standard polynomials outside of this galois field, see the Wikipedia article for generic algorithm).'''
-    # CAUTION: this function expects polynomials to follow the opposite convention at decoding:
-    # the terms must go from the biggest to lowest degree (while most other functions here expect
-    # a list from lowest to biggest degree). eg: 1 + 2x + 5x^2 = [5, 2, 1], NOT [1, 2, 5]
-
-    msg_out = list(dividend) # Copy the dividend
-    #normalizer = divisor[0] # precomputing for performance
-    for i in range(0, len(dividend) - (len(divisor)-1)):
-        #msg_out[i] /= normalizer # for general polynomial division (when polynomials are non-monic), the usual way of using
-                                  # synthetic division is to divide the divisor g(x) with its leading coefficient, but not needed here.
-        coef = msg_out[i] # precaching
-        if coef != 0: # log(0) is undefined, so we need to avoid that case explicitly (and it's also a good optimization).
-            for j in range(1, len(divisor)): # in synthetic division, we always skip the first coefficient of the divisior,
-                                              # because it's only used to normalize the dividend coefficient
-                if divisor[j] != 0: # log(0) is undefined
-                    msg_out[i + j] ^= gf_mul(divisor[j], coef) # equivalent to the more mathematically correct
-                                                               # (but xoring directly is faster): msg_out[i + j] += -divisor[j] * coef
-
-    # The resulting msg_out contains both the quotient and the remainder, the remainder being the size of the divisor
-    # (the remainder has necessarily the same degree as the divisor -- not length but degree == length-1 -- since it's
-    # what we couldn't divide from the dividend), so we compute the index where this separation is, and return the quotient and remainder.
-    separator = -(len(divisor)-1)
-    return msg_out[:separator], msg_out[separator:] # return quotient, remainder.
-
-
 def gf_poly_mul(p,q):
     '''Multiply two polynomials, inside Galois Field'''
     # Pre-allocate the result array

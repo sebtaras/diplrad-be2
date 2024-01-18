@@ -1,9 +1,9 @@
 from reedsolomon.gf_math import gf_poly_div, gf_poly_mul, gf_pow
 
 
-def rs_generator_poly(nsym):
+def rs_generator_poly(t):
     g = [1]
-    for i in range(0, nsym):
+    for i in range(0, t):
         g = gf_poly_mul(g, [1, gf_pow(2, i)])
     return g
 
