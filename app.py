@@ -12,10 +12,6 @@ n = 255
 k = 223
 t = n - k
 gen_polynomial = rs_generator_poly(t)
-print(len(gen_polynomial))
-@app.route("/")
-def hello_world():
-    return "<p>Hello, World!</p>"
 
 
 @cross_origin()
@@ -56,14 +52,12 @@ def encode_image():
 @cross_origin()
 @app.route("/decode-image", methods=["POST"])
 def decode_image():
-    # try:
-    data = request.get_json()
-    decoded_image_base64 = rs_decode(data["blocks"], n - k)
-    result = {"base64": decoded_image_base64}
-    print("row 10", data["blocks"][10])
-    print(data["count"])
-    return jsonify(result), 200
-    # except:
-        # return jsonify({"message": "Too many errors"}), 500
+    try:
+        data = request.get_json()
+        decoded_image_base64 = rs_decode(data["blocks"], n - k)
+        result = {"base64": decoded_image_base64}
+        return jsonify(result), 200
+    except:
+        return jsonify({"message": "Too many errors"}), 500
 
 
