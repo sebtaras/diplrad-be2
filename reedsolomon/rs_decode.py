@@ -17,50 +17,23 @@ def rs_calc_syndromes(msg, nsym):
     return [0] + synd # pad with one 0 for mathematical precision (else we can end up with weird calculations sometimes)
 
 
-def rs_forney_syndromes(synd, pos, nmess):
-    # Compute Forney syndromes, which computes a modified syndromes to compute only errors (erasures are trimmed out). Do not confuse this with Forney algorithm, which allows to correct the message based on the location of errors.
-    erase_pos_reversed = [nmess-1-p for p in pos] # prepare the coefficient degree positions (instead of the erasures positions)
-
-    # Optimized method, all operations are inlined
-    fsynd = list(synd[1:])      # make a copy and trim the first coefficient which is always 0 by definition
-    for i in range(0, len(pos)):
-        x = gf_pow(2, erase_pos_reversed[i])
-        for j in range(0, len(fsynd) - 1):
-            fsynd[j] = gf_mul(fsynd[j], x) ^ fsynd[j + 1]
-
-    # Equivalent, theoretical way of computing the modified Forney syndromes: fsynd = (erase_loc * synd) % x^(n-k)
-    # See Shao, H. M., Truong, T. K., Deutsch, L. J., & Reed, I. S. (1986, April). A single chip VLSI Reed-Solomon decoder. In Acoustics, Speech, and Signal Processing, IEEE International Conference on ICASSP'86. (Vol. 11, pp. 2151-2154). IEEE.ISO 690
-    #erase_loc = rs_find_errata_locator(erase_pos_reversed, generator=generator) # computing the erasures locator polynomial
-    #fsynd = gf_poly_mul(erase_loc[::-1], synd[1:]) # then multiply with the syndrome to get the untrimmed forney syndrome
-    #fsynd = fsynd[len(pos):] # then trim the first erase_pos coefficients which are useless. Seems to be not necessary, but this reduces the computation time later in BM (thus it's an optimization).
-
-    return fsynd
-
-
-def rs_find_error_locator(synd, nsym, erase_loc=None, erase_count=0):
+def rs_find_error_locator(synd, nsym):
     '''Find error/errata locator and evaluator polynomials with Berlekamp-Massey algorithm'''
     # The idea is that BM will iteratively estimate the error locator polynomial.
     # To do this, it will compute a Discrepancy term called Delta, which will tell us if the error locator polynomial needs an update or not
     # (hence why it's called discrepancy: it tells us when we are getting off board from the correct value).
 
     # Init the polynomials
-    if erase_loc: # if the erasure locator polynomial is supplied, we init with its value, so that we include erasures in the final locator polynomial
-        err_loc = list(erase_loc)
-        old_loc = list(erase_loc)
-    else:
-        err_loc = [1] # This is the main variable we want to fill, also called Sigma in other notations or more formally the errors/errata locator polynomial.
-        old_loc = [1] # BM is an iterative algorithm, and we need the errata locator polynomial of the previous iteration in order to update other necessary variables.
+    err_loc = [1] # This is the main variable we want to fill, also called Sigma in other notations or more formally the errors/errata locator polynomial.
+    old_loc = [1] # BM is an iterative algorithm, and we need the errata locator polynomial of the previous iteration in order to update other necessary variables.
     #L = 0 # update flag variable, not needed here because we use an alternative equivalent way of checking if update is needed (but using the flag could potentially be faster depending on if using length(list) is taking linear time in your language, here in Python it's constant so it's as fast.
 
     # Fix the syndrome shifting: when computing the syndrome, some implementations may prepend a 0 coefficient for the lowest degree term (the constant). This is a case of syndrome shifting, thus the syndrome will be bigger than the number of ecc symbols (I don't know what purpose serves this shifting). If that's the case, then we need to account for the syndrome shifting when we use the syndrome such as inside BM, by skipping those prepended coefficients.
     # Another way to detect the shifting is to detect the 0 coefficients: by definition, a syndrome does not contain any 0 coefficient (except if there are no errors/erasures, in this case they are all 0). This however doesn't work with the modified Forney syndrome, which set to 0 the coefficients corresponding to erasures, leaving only the coefficients corresponding to errors.
     synd_shift = len(synd) - nsym
 
-    for i in range(0, nsym-erase_count): # generally: nsym-erase_count == len(synd), except when you input a partial erase_loc and using the full syndrome instead of the Forney syndrome, in which case nsym-erase_count is more correct (len(synd) will fail badly with IndexError).
-        if erase_loc: # if an erasures locator polynomial was provided to init the errors locator polynomial, then we must skip the FIRST erase_count iterations (not the last iterations, this is very important!)
-            K = erase_count+i+synd_shift
-        else: # if erasures locator is not provided, then either there's no erasures to account or we use the Forney syndromes, so we don't need to use erase_count nor erase_loc (the erasures have been trimmed out of the Forney syndromes).
-            K = i+synd_shift
+    for i in range(0, nsym): # generally: nsym-erase_count == len(synd), except when you input a partial erase_loc and using the full syndrome instead of the Forney syndrome, in which case nsym-erase_count is more correct (len(synd) will fail badly with IndexError).
+        K = i+synd_shift
 
         # Compute the discrepancy Delta
         # Here is the close-to-the-books operation to compute the discrepancy Delta: it's a simple polynomial multiplication of error locator with the syndromes, and then we get the Kth element.
@@ -92,7 +65,7 @@ def rs_find_error_locator(synd, nsym, erase_loc=None, erase_count=0):
     # Check if the result is correct, that there's not too many errors to correct
     while len(err_loc) and err_loc[0] == 0: del err_loc[0] # drop leading 0s, else errs will not be of the correct size
     errs = len(err_loc) - 1
-    if (errs-erase_count) * 2 + erase_count > nsym:
+    if (errs) * 2 > nsym:
         raise ReedSolomonError("Too many errors to correct")    # too many errors to correct
 
     return err_loc
@@ -146,11 +119,13 @@ def rs_find_error_evaluator(synd, err_loc, nsym):
     return remainder
 
 
-def rs_correct_errata(msg_in, synd, err_pos): # err_pos is a list of the positions of the errors/erasures/errata
+def rs_correct_errata(msg_in, synd, err_pos, err_loc): # err_pos is a list of the positions of the errors/erasures/errata
     '''Forney algorithm, computes the values (error magnitude) to correct the input message.'''
     # calculate errata locator polynomial to correct both errors and erasures (by combining the errors positions given by the error locator polynomial found by BM with the erasures positions given by caller)
-    coef_pos = [len(msg_in) - 1 - p for p in err_pos] # need to convert the positions to coefficients degrees for the errata locator algo to work (eg: instead of [0, 1, 2] it will become [len(msg)-1, len(msg)-2, len(msg) -3])
+    coef_pos = [len(msg_in) - 1 - p for p in err_pos] # Lokacije gresaka se konvertiraju u stupanj polinoma
+    # print("coef_pos", coef_pos)
     err_loc = rs_find_errata_locator(coef_pos)
+    print("err_loc 2", err_loc)
     # calculate errata evaluator polynomial (often called Omega or Gamma in academic papers)
     err_eval = rs_find_error_evaluator(synd[::-1], err_loc, len(err_loc)-1)[::-1]
 
@@ -199,46 +174,32 @@ def rs_correct_errata(msg_in, synd, err_pos): # err_pos is a list of the positio
     return msg_in
 
 
-def rs_correct_msg(msg_in, nsym, erase_pos=None):
-  '''Reed-Solomon main decoding function'''
-  if len(msg_in) > 255: # can't decode, message is too big
-      raise ValueError("Message is too long (%i when max is 255)" % len(msg_in))
-
-  msg_out = list(msg_in)     # copy of message
-  # erasures: set them to null bytes for easier decoding (but this is not necessary, they will be corrected anyway, but debugging will be easier with null bytes because the error locator polynomial values will only depend on the errors locations, not their values)
-  if erase_pos is None:
-      erase_pos = []
-  else:
-      for e_pos in erase_pos:
-          msg_out[e_pos] = 0
-  # check if there are too many erasures to correct (beyond the Singleton bound)
-  if len(erase_pos) > nsym: raise ReedSolomonError("Too many erasures to correct")
-  # prepare the syndrome polynomial using only errors (ie: errors = characters that were either replaced by null byte
-  # or changed to another character, but we don't know their positions)
-  synd = rs_calc_syndromes(msg_out, nsym)
+def rs_correct_msg(msg_in, t):
+  msg_out = list(msg_in)
+  syndromes = rs_calc_syndromes(msg_out, t)
   # check if there's any error/erasure in the input codeword. If not (all syndromes coefficients are 0), then just return the message as-is.
-  if max(synd) == 0:
-      return msg_out[:-nsym], msg_out[-nsym:]  # no errors
+  if max(syndromes) == 0:
+      return msg_out[:-t], msg_out[-t:]  # no errors
 
-  # compute the Forney syndromes, which hide the erasures from the original syndrome (so that BM will just have to deal with errors, not erasures)
-  fsynd = rs_forney_syndromes(synd, erase_pos, len(msg_out))
+
+  print("syndromes", syndromes)
   # compute the error locator polynomial using Berlekamp-Massey
-  err_loc = rs_find_error_locator(fsynd, nsym, erase_count=len(erase_pos))
+  err_loc = rs_find_error_locator(syndromes[1:], t)
+  print("err_loc 1", err_loc)
   # locate the message errors using Chien search (or brute-force search)
   err_pos = rs_find_errors(err_loc[::-1] , len(msg_out))
-  if err_pos is None:
-      raise ReedSolomonError("Could not locate error")    # error location failed
+#   print("err_pos", err_pos)
+#   if err_pos is None:
+    #   raise ReedSolomonError("Could not locate error")    # error location failed
 
-  # Find errors values and apply them to correct the message
   # compute errata evaluator and errata magnitude polynomials, then correct errors and erasures
-  msg_out = rs_correct_errata(msg_out, synd, (erase_pos + err_pos)) # note that we here use the original syndrome, not the forney syndrome
-                                                                                                                                # (because we will correct both errors and erasures, so we need the full syndrome)
+  msg_out = rs_correct_errata(msg_out, syndromes, err_pos, err_loc) # note that we here use the original syndrome, not the forney syndrome
   # check if the final message is fully repaired
-  synd = rs_calc_syndromes(msg_out, nsym)
-  if max(synd) > 0:
+  syndromes = rs_calc_syndromes(msg_out, t)
+  if max(syndromes) > 0:
       raise ReedSolomonError("Could not correct message")     # message could not be repaired
   # return the successfully decoded message
-  return msg_out[:-nsym], msg_out[-nsym:] # also return the corrected ecc block so that the user can check()
+  return msg_out[:-t], msg_out[-t:] # also return the corrected ecc block so that the user can check()
 
 
 def decode_chunks(chunks, nsym):
@@ -250,7 +211,6 @@ def decode_chunks(chunks, nsym):
 
 def restore_text(chunks):
   result_string = ""
-  print("chunkaz", chunks)
   for c in chunks:
     result_string += ''.join([chr(x) for x in c])
   return result_string
