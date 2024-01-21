@@ -87,20 +87,22 @@ def rs_decode_msg(msg_in, t):
   msg_out = list(msg_in)
   syndromes = rs_calc_syndromes(msg_out, t)
   if max(syndromes) == 0:
-      return msg_out[:-t], msg_out[-t:]  # no errors
+      return msg_out[:-t], []  # no errors
 
   err_loc = find_error_locator(syndromes[1:], t)
   err_pos = find_errors(err_loc[::-1] , len(msg_out))
   msg_out = correct_errata(msg_out, syndromes[::-1], err_pos, err_loc) 
-  return msg_out[:-t], msg_out[-t:] 
+  return msg_out[:-t], err_pos[::-1]
 
 
 def decode_chunks(chunks, nsym):
   restored_chunks = []
+  errors_per_chunk = []
   for c in chunks:
-    corrected_message, _ = rs_decode_msg(c, nsym)
+    corrected_message, err_pos = rs_decode_msg(c, nsym)
     restored_chunks.append(corrected_message)
-  return restored_chunks
+    errors_per_chunk.append(err_pos)
+  return restored_chunks, errors_per_chunk
 
 
 def restore_text(chunks):

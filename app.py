@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS, cross_origin
-from rs import rs_encode, rs_decode, get_encoded_image_chunks
+from rs import rs_encode, rs_decode_text, rs_decode_image, get_encoded_image_chunks
 from reedsolomon.rs_encode import rs_generator_poly
 
 
@@ -31,8 +31,8 @@ def encode_text():
 def decode():
     try:
         data = request.get_json()
-        decoded_string = rs_decode(data, n - k)
-        result = {"decoded_string": decoded_string}
+        decoded_string, decode_info = rs_decode_text(data, n - k)
+        result = {"decoded_string": decoded_string, "decode_info": decode_info,}
         return jsonify(result), 200
     except:
         return jsonify({"message": "Too many errors"}), 500
@@ -54,8 +54,8 @@ def encode_image():
 def decode_image():
     try:
         data = request.get_json()
-        decoded_image_base64 = rs_decode(data["blocks"], n - k)
-        result = {"base64": decoded_image_base64}
+        decoded_image_base64, errors_found, percentage_error = rs_decode_image(data["blocks"], n - k)
+        result = {"base64": decoded_image_base64, "errors_found": errors_found, "percentage_error": percentage_error}
         return jsonify(result), 200
     except:
         return jsonify({"message": "Too many errors"}), 500
