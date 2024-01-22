@@ -1,7 +1,7 @@
 from reedsolomon.gf_math import gf_poly_eval, gf_pow, gf_mul, gf_poly_scale, gf_inverse, gf_poly_add, gf_poly_mul, gf_poly_div, gf_sub, gf_div
 
 
-def rs_calc_syndromes(msg, nsym):
+def calc_syndromes(msg, nsym):
     synd = [0] * nsym
     for i in range(0, nsym):
         synd[i] = gf_poly_eval(msg, gf_pow(2,i))
@@ -51,7 +51,7 @@ def find_errors(err_loc, nmess):
 
 
 def correct_errata(msg_in, synd, err_pos, err_loc): 
-    coef_pos = [len(msg_in) - 1 - p for p in err_pos] # Lokacije gresaka se konvertiraju u stupanj polinoma
+    coef_pos = [len(msg_in) - 1 - p for p in err_pos] 
     product = gf_poly_mul(synd, err_loc)
     divisor = [1] + [0] * len(err_loc)
     _, err_eval = gf_poly_div(product, divisor)
@@ -62,7 +62,7 @@ def correct_errata(msg_in, synd, err_pos, err_loc):
         l = 255 - coef_pos[i]
         error_positions.append( gf_pow(2, -l) )
 
-    E = [0] * (len(msg_in)) # Izvorne vrijednosti zamjenjene greskama
+    E = [0] * (len(msg_in)) 
     for index, Xi in enumerate(error_positions):
         Xi_inv = gf_inverse(Xi)
         err_loc_prime_tmp = []
@@ -85,7 +85,7 @@ def correct_errata(msg_in, synd, err_pos, err_loc):
 
 def rs_decode_msg(msg_in, t):
   msg_out = list(msg_in)
-  syndromes = rs_calc_syndromes(msg_out, t)
+  syndromes = calc_syndromes(msg_out, t)
   if max(syndromes) == 0:
       return msg_out[:-t], []  # no errors
 
